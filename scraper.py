@@ -4,6 +4,7 @@ import re
 import json
 import gzip
 import time
+from pathlib import Path
 import requests
 import xml.etree.ElementTree as ET
 
@@ -18,6 +19,7 @@ from urllib.parse import (
 )
 from urllib.robotparser import RobotFileParser
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 
 # ==========================================
@@ -25,7 +27,7 @@ from bs4 import BeautifulSoup
 # ==========================================
 
 USER_AGENT = (
-    "PropIntelResearchBot/1.0 "
+    "darglobal-bot/1.0 "
     "(contact: your-email@example.com)"
 )
 
@@ -38,7 +40,11 @@ MAX_PAGES_PER_SITE = 40
 DELAY_SECONDS = 2
 REQUEST_TIMEOUT = 25
 
-OUTPUT_FILE = "data/pages.json"
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+DATA_DIR_SETTING = Path(os.getenv("DATA_DIR", BASE_DIR / "data"))
+DATA_DIR = (DATA_DIR_SETTING if DATA_DIR_SETTING.is_absolute() else BASE_DIR / DATA_DIR_SETTING).resolve()
+OUTPUT_FILE = str(DATA_DIR / "pages.json")
 
 SKIP_EXT = (
     ".pdf", ".jpg", ".jpeg", ".png", ".gif",

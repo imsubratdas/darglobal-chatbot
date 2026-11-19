@@ -1,429 +1,602 @@
-
-import os
-import json
-from pathlib import Path
-
-import requests
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-
-# ==========================================
-# 1. CONFIGURATION
-# ==========================================
-
-BASE = Path(__file__).resolve().parent
-
-load_dotenv(BASE / ".env")
-
-API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
-
-# Use only free routing options.
-DEFAULT_MODELS = "openrouter/free"
-
-MODELS = [
-    model.strip()
-    for model in os.getenv(
-        "OPENROUTER_MODELS",
-        DEFAULT_MODELS
-    ).split(",")
-    if model.strip()
-]
-
-OPENROUTER_URL = (
-    "https://openrouter.ai/api/v1/chat/completions"
-)
-
-DATA_FILE = BASE / "data" / "pages.json"
-STATIC_DIR = BASE / "static"
-
-
-# ==========================================
-# 2. LOAD DATA
-# ==========================================
-
-if not DATA_FILE.exists():
-    raise FileNotFoundError(
-        f"Dataset not found: {DATA_FILE}"
-    )
-
-with open(DATA_FILE, "r", encoding="utf-8") as file:
-    pages = json.load(file)
-
-if not isinstance(pages, list):
-    raise ValueError("pages.json must contain a JSON list")
-
-
-# ==========================================
-# 3. TEXT CHUNKING
-# ==========================================
-
-def split_text(text, size=900, overlap=150):
-
-    output = []
-
-    start = 0
-
-    while start < len(text):
-
-        piece = text[start:start + size].strip()
-
-        if piece:
-            output.append(piece)
-
-        start += size - overlap
-
-    return output
-
-
-# ==========================================
-# 4. CREATE KNOWLEDGE BASE
-# ==========================================
-
-chunks = []
-
-for page in pages:
-
-    text = page.get("text", "")
-
-    if not isinstance(text, str) or not text.strip():
-        continue
-
-    for piece in split_text(text):
-
-        chunks.append({
-            "company": page.get("company", "Unknown"),
-            "url": page.get("url", ""),
-            "title": page.get("title", ""),
-            "text": piece
-        })
-
-
-# ==========================================
-# 5. TF-IDF VECTOR SEARCH
-# ==========================================
-
-vectorizer = None
-matrix = None
-
-if chunks:
-
-    documents = [
-        (
-            chunk["company"] + " " +
-            chunk["title"] + " " +
-            chunk["text"]
-        )
-        for chunk in chunks
-    ]
-
-    vectorizer = TfidfVectorizer(
-        stop_words="english",
-        ngram_range=(1, 2),
-        sublinear_tf=True,
-        max_features=50000
-    )
-
-    matrix = vectorizer.fit_transform(documents)
-
-    print(f"Loaded {len(pages)} pages")
-    print(f"Created {len(chunks)} text chunks")
-
-else:
-
-    print("WARNING: No searchable documents found")
-
-
-# ==========================================
-# 6. SYSTEM PROMPT
-# ==========================================
-
-SYSTEM_PROMPT = """
-You are PropIntel AI, a real estate intelligence
-assistant for DarGlobal and Wasalt.
-
-Your responsibilities:
-
-1. Answer questions using the supplied context.
-2. Identify whether information belongs to DarGlobal
-   or Wasalt.
-3. Never invent prices, locations, amenities,
-   property details or project information.
-4. If the answer is unavailable in the context,
-   explicitly say that you do not have that information.
-5. Distinguish between property listings and
-   development projects.
-6. Do not claim that listing availability is live.
-7. Provide clear and concise answers.
-8. Use the supplied source references to support
-   factual statements.
-
-Only use the retrieved context as factual evidence.
+"""
+app.py - FastAPI Backend for darglobal-bot
+Provides REST API for Authentication, Persistent Chats, Messages, and Hybrid RAG.
 """
 
+import os
+import logging
+import re
+from pathlib import Path
+from typing import List, Dict, Any, Optional
 
-# ==========================================
-# 7. RETRIEVAL FUNCTION
-# ==========================================
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
 
-def retrieve(query, k=5):
+from database import get_db, Base, engine
+from models import User, Chat, Message
+from auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    decode_access_token
+)
+from rag import get_rag
+from external_search import search_external
+from llm import generate_answer
 
-    if vectorizer is None or matrix is None:
-        return []
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("darglobal_bot.app")
 
-    query_vector = vectorizer.transform([query])
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+load_dotenv(BASE_DIR / ".env")
 
-    scores = cosine_similarity(
-        query_vector,
-        matrix
-    )[0]
+# Initialize database tables
+Base.metadata.create_all(bind=engine)
 
-    top_indices = scores.argsort()[::-1][:k]
-
-    results = []
-
-    for index in top_indices:
-
-        if scores[index] <= 0:
-            continue
-
-        result = chunks[index].copy()
-
-        result["score"] = float(scores[index])
-
-        results.append(result)
-
-    return results
-
-
-# ==========================================
-# 8. FASTAPI APPLICATION
-# ==========================================
-
+# Initialize FastAPI App
 app = FastAPI(
-    title="PropIntel AI",
-    description="DarGlobal and Wasalt AI Assistant",
-    version="1.0.0"
+    title="darglobal-bot API",
+    description="Independent AI Real Estate Informational Assistant for DarGlobal & Wasalt",
+    version="2.0.0"
 )
 
+# Initialize RAG index at startup
+rag = get_rag()
+
 
 # ==========================================
-# 9. REQUEST SCHEMA
+# AUTHENTICATION DEPENDENCY
 # ==========================================
+
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> User:
+    """Retrieve authenticated user from HTTP-only cookie or Authorization header."""
+    token = request.cookies.get("access_token")
+
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+
+    user_id = decode_access_token(token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token"
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+
+    return user
+
+
+def get_optional_user(
+    request: Request,
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Retrieve user if authenticated, else None (for hybrid public/private endpoints)."""
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1]
+
+    if not token:
+        return None
+
+    user_id = decode_access_token(token)
+    if user_id is None:
+        return None
+
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def get_user_chat(chat_id: str, user_id: int, db: Session) -> Chat:
+    """Enforce strict chat ownership validation."""
+    chat = db.query(Chat).filter(
+        Chat.id == chat_id,
+        Chat.user_id == user_id
+    ).first()
+
+    if not chat:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found or access denied"
+        )
+    return chat
+
+
+# ==========================================
+# PYDANTIC SCHEMAS
+# ==========================================
+
+class RegisterRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class CreateChatRequest(BaseModel):
+    title: Optional[str] = Field(default="New chat", max_length=255)
+
+
+class UpdateChatRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    is_pinned: Optional[bool] = None
+
+
+class SendMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
 
 class ChatRequest(BaseModel):
-
-    message: str
-
-    history: list[dict] = Field(
-        default_factory=list
-    )
+    message: str = Field(min_length=1, max_length=4000)
+    history: List[Dict[str, Any]] = Field(default_factory=list)
+    chat_id: Optional[str] = None
 
 
 # ==========================================
-# 10. HEALTH ENDPOINT
+# HEALTH & METRICS ENDPOINT
 # ==========================================
 
 @app.get("/health")
 def health():
-
     return {
-        "status": "ok",
-        "pages": len(pages),
-        "chunks": len(chunks),
-        "models": MODELS
+        "status": "healthy",
+        "app_name": "darglobal-bot",
+        "version": "2.0.0",
+        "total_chunks": len(rag.chunks) if rag else 0,
+        "bm25_ready": rag.bm25 is not None if rag else False,
+        "semantic_ready": rag.chunk_embeddings is not None if rag else False
     }
 
 
 # ==========================================
-# 11. CHAT ENDPOINT
+# AUTHENTICATION API
 # ==========================================
 
-@app.post("/chat")
-def chat(req: ChatRequest):
+@app.post("/api/register")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    name = req.name.strip()
+    email = req.email.lower().strip()
+    password = req.password
 
-    # Check API key
-    if not API_KEY:
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
 
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
         raise HTTPException(
-            status_code=500,
-            detail="OPENROUTER_API_KEY is not configured"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email address already exists"
         )
 
-    question = req.message.strip()
+    user = User(
+        name=name,
+        email=email,
+        password_hash=hash_password(password)
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
 
-    if not question:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Message cannot be empty"
-        )
-
-    if len(question) > 2000:
-
-        raise HTTPException(
-            status_code=400,
-            detail="Message is too long"
-        )
-
-    # Retrieve relevant context
-    hits = retrieve(question, k=5)
-
-    context_parts = []
-
-    for hit in hits:
-
-        context_parts.append(
-            f"""
-Source: {hit['company']}
-Title: {hit['title']}
-URL: {hit['url']}
-
-Content:
-{hit['text']}
-"""
-        )
-
-    context = "\n\n".join(context_parts)
-
-    if not context:
-
-        context = (
-            "No relevant information was found "
-            "in the collected dataset."
-        )
-
-    # Prepare messages
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT + "\n\nCONTEXT:\n" + context
+    logger.info(f"New user registered: {email}")
+    return {
+        "message": "Registration successful",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
         }
+    }
+
+
+@app.post("/api/login")
+def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    email = req.email.lower().strip()
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+
+    token = create_access_token(user.id)
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=bool(os.getenv("COOKIE_SECURE", "").lower() in ("true", "1", "yes")),
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,  # 7 days
+        path="/"
+    )
+
+    logger.info(f"User logged in: {email}")
+    return {
+        "message": "Login successful",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email
+        }
+    }
+
+
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie(key="access_token", path="/")
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/api/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email
+    }
+
+
+# ==========================================
+# CHAT MANAGEMENT API
+# ==========================================
+
+@app.get("/api/chats")
+def list_chats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    chats = db.query(Chat).filter(
+        Chat.user_id == current_user.id
+    ).order_by(
+        Chat.is_pinned.desc(),
+        Chat.updated_at.desc()
+    ).all()
+
+    return [
+        {
+            "id": chat.id,
+            "title": chat.title,
+            "is_pinned": chat.is_pinned,
+            "created_at": chat.created_at.isoformat(),
+            "updated_at": chat.updated_at.isoformat()
+        }
+        for chat in chats
     ]
 
-    # Limit conversation history
-    for item in req.history[-6:]:
 
-        role = item.get("role")
-        content = item.get("content")
+@app.post("/api/chats")
+def create_chat(
+    req: CreateChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    title = (req.title or "New chat").strip()
+    chat = Chat(
+        user_id=current_user.id,
+        title=title
+    )
+    db.add(chat)
+    db.commit()
+    db.refresh(chat)
 
-        if (
-            role in ("user", "assistant")
-            and isinstance(content, str)
-            and content.strip()
-        ):
-
-            messages.append({
-                "role": role,
-                "content": content[:3000]
-            })
-
-    messages.append({
-        "role": "user",
-        "content": question
-    })
-
-    # ======================================
-    # 12. OPENROUTER REQUEST
-    # ======================================
-
-    last_error = ""
-
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:8000",
-        "X-Title": "PropIntel AI"
+    return {
+        "id": chat.id,
+        "title": chat.title,
+        "is_pinned": chat.is_pinned,
+        "created_at": chat.created_at.isoformat(),
+        "updated_at": chat.updated_at.isoformat()
     }
 
-    for model in MODELS:
 
-        try:
+@app.get("/api/chats/{chat_id}")
+def get_chat_details(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    chat = get_user_chat(chat_id, current_user.id, db)
 
-            response = requests.post(
-                OPENROUTER_URL,
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.2,
-                    "max_tokens": 1000
-                },
-                timeout=60
-            )
+    messages_data = []
+    for msg in chat.messages:
+        # Handle sources whether saved as list or rich dict
+        sources_list = []
+        answer_type = "internal"
+        external_sources = []
+        retrieval_info = {}
 
-            if response.status_code == 200:
+        if isinstance(msg.sources, dict):
+            sources_list = msg.sources.get("sources", [])
+            answer_type = msg.sources.get("answer_type", "internal")
+            external_sources = msg.sources.get("external_sources", [])
+            retrieval_info = msg.sources.get("retrieval_info", {})
+        elif isinstance(msg.sources, list):
+            sources_list = msg.sources
 
-                data = response.json()
+        messages_data.append({
+            "id": msg.id,
+            "role": msg.role,
+            "content": msg.content,
+            "sources": sources_list,
+            "answer_type": answer_type,
+            "external_sources": external_sources,
+            "retrieval_info": retrieval_info,
+            "created_at": msg.created_at.isoformat()
+        })
 
-                answer = (
-                    data["choices"][0]["message"]["content"]
-                )
+    return {
+        "id": chat.id,
+        "title": chat.title,
+        "is_pinned": chat.is_pinned,
+        "created_at": chat.created_at.isoformat(),
+        "updated_at": chat.updated_at.isoformat(),
+        "messages": messages_data
+    }
 
-                sources = []
 
-                for hit in hits:
+@app.patch("/api/chats/{chat_id}")
+def update_chat(
+    chat_id: str,
+    req: UpdateChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    chat = get_user_chat(chat_id, current_user.id, db)
 
-                    if hit["url"] and hit["url"] not in sources:
-                        sources.append(hit["url"])
+    if req.title is not None:
+        clean_title = req.title.strip()
+        if clean_title:
+            chat.title = clean_title
 
-                return {
-                    "answer": answer,
-                    "sources": sources,
-                    "model": data.get("model", model),
-                    "retrieved_chunks": len(hits)
-                }
+    if req.is_pinned is not None:
+        chat.is_pinned = req.is_pinned
 
-            last_error = (
-                f"{model}: HTTP {response.status_code} - "
-                f"{response.text[:500]}"
-            )
+    db.commit()
+    db.refresh(chat)
 
-            print("[OPENROUTER ERROR]", last_error)
+    return {
+        "id": chat.id,
+        "title": chat.title,
+        "is_pinned": chat.is_pinned,
+        "created_at": chat.created_at.isoformat(),
+        "updated_at": chat.updated_at.isoformat()
+    }
 
-        except requests.RequestException as error:
 
-            last_error = f"{model}: {str(error)}"
+@app.post("/api/chats/{chat_id}/pin")
+def toggle_pin_chat(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    chat = get_user_chat(chat_id, current_user.id, db)
+    chat.is_pinned = not chat.is_pinned
+    db.commit()
+    db.refresh(chat)
 
-            print("[REQUEST ERROR]", last_error)
+    return {
+        "id": chat.id,
+        "title": chat.title,
+        "is_pinned": chat.is_pinned
+    }
 
-        except (ValueError, KeyError, IndexError) as error:
 
-            last_error = f"{model}: Invalid API response: {error}"
-
-            print("[RESPONSE ERROR]", last_error)
-
-    raise HTTPException(
-        status_code=502,
-        detail="All configured free models failed: " + last_error
-    )
+@app.delete("/api/chats/{chat_id}")
+def delete_chat(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    chat = get_user_chat(chat_id, current_user.id, db)
+    db.delete(chat)
+    db.commit()
+    return {"message": "Chat deleted successfully", "id": chat_id}
 
 
 # ==========================================
-# 13. STATIC FRONTEND
+# CORE RAG ORCHESTRATION PIPELINE
 # ==========================================
 
-if not STATIC_DIR.exists():
+def run_rag_pipeline(query: str, history: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Executes the complete Hybrid RAG + External Search + LLM generation pipeline:
+    1. Hybrid BM25 + Semantic vector retrieval with RRF ranking.
+    2. Evaluates context sufficiency.
+    3. If insufficient, triggers external search fallback.
+    4. Passes enriched context to LLM.
+    5. Returns standardized response schema with source transparency.
+    """
+    clean_query = query.strip()
+    retrieval_query = clean_query
+    if history and (len(clean_query.split()) <= 7 or re.search(r"\b(it|its|this|that|those|them|they|there|same)\b", clean_query, re.I)):
+        recent_context = " ".join(
+            item.get("content", "").strip()[:700]
+            for item in history[-4:]
+            if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str)
+        )
+        if recent_context:
+            retrieval_query = f"{recent_context} {clean_query}"[:2400]
 
-    raise FileNotFoundError(
-        f"Static folder not found: {STATIC_DIR}"
+    # Step 1: Hybrid retrieval from internal knowledge base
+    try:
+        retrieval_output = rag.retrieve(retrieval_query, top_k=6)
+        internal_chunks = retrieval_output["results"]
+        is_sufficient = retrieval_output["sufficient"]
+
+        external_results = []
+        if not is_sufficient:
+            logger.info("Internal knowledge insufficient; checking configured external search.")
+            external_results = search_external(retrieval_query, max_results=3)
+
+        ai_response = generate_answer(
+            query=clean_query,
+            internal_chunks=internal_chunks,
+            external_results=external_results,
+            conversation_history=history,
+            sufficient_internal=is_sufficient
+        )
+    except Exception as exc:
+        logger.exception("Answer pipeline failed")
+        raise HTTPException(status_code=503, detail="The answer service is temporarily unavailable. Please try again.") from exc
+
+    if not isinstance(ai_response, dict) or not isinstance(ai_response.get("answer"), str) or not ai_response["answer"].strip():
+        raise HTTPException(status_code=502, detail="The answer service returned an empty response. Please try again.")
+    return ai_response
+
+
+# ==========================================
+# CHAT MESSAGING ENDPOINTS
+# ==========================================
+
+@app.post("/api/chats/{chat_id}/messages")
+def post_chat_message(
+    chat_id: str,
+    req: SendMessageRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Send message within an existing persistent chat.
+    Saves user message, generates answer via Hybrid RAG, saves assistant message.
+    """
+    chat = get_user_chat(chat_id, current_user.id, db)
+    user_text = req.message.strip()
+    if not user_text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    # Use persisted history as the source of truth for follow-up turns.
+    history = [
+        {"role": m.role, "content": m.content}
+        for m in chat.messages[-10:]
+    ]
+    ai_response = run_rag_pipeline(user_text, history)
+
+    db.add(Message(chat_id=chat.id, role="user", content=user_text, sources=[]))
+    if chat.title == "New chat" or not chat.messages:
+        chat.title = user_text[:35] + ("..." if len(user_text) > 35 else "")
+
+    # Persist assistant message with metadata
+    assistant_msg = Message(
+        chat_id=chat.id,
+        role="assistant",
+        content=ai_response["answer"],
+        sources={
+            "sources": ai_response["sources"],
+            "answer_type": ai_response["answer_type"],
+            "external_sources": ai_response["external_sources"],
+            "retrieval_info": ai_response["retrieval_info"]
+        }
     )
+    db.add(assistant_msg)
+    db.commit()
+    db.refresh(chat)
 
-app.mount(
-    "/static",
-    StaticFiles(directory=STATIC_DIR),
-    name="static"
-)
+    return {
+        "answer": ai_response["answer"],
+        "sources": ai_response["sources"],
+        "answer_type": ai_response["answer_type"],
+        "external_sources": ai_response["external_sources"],
+        "retrieval_info": ai_response["retrieval_info"],
+        "chat_id": chat.id,
+        "chat_title": chat.title
+    }
 
 
-@app.get("/")
-def home():
+@app.post("/chat")
+def standalone_chat(
+    req: ChatRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Standard /chat endpoint adhering strictly to response schema.
+    Supports anonymous exploratory queries as well as authenticated sessions.
+    """
+    user_text = req.message.strip()
+    if not user_text:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    return FileResponse(
-        STATIC_DIR / "index.html"
-    )
+    user = get_optional_user(request, db)
+
+    # If chat_id is provided and user is authenticated, persist the turn
+    active_chat = None
+    if req.chat_id and user:
+        active_chat = db.query(Chat).filter(
+            Chat.id == req.chat_id,
+            Chat.user_id == user.id
+        ).first()
+        if not active_chat:
+            raise HTTPException(status_code=404, detail="Conversation not found or access denied")
+
+    history = req.history[-10:]
+    if active_chat:
+        history = [{"role": m.role, "content": m.content} for m in active_chat.messages[-10:]]
+    ai_response = run_rag_pipeline(user_text, history)
+
+    if active_chat:
+        db.add(Message(chat_id=active_chat.id, role="user", content=user_text, sources=[]))
+        if active_chat.title == "New chat":
+            active_chat.title = user_text[:35] + ("..." if len(user_text) > 35 else "")
+        assistant_msg = Message(
+            chat_id=active_chat.id,
+            role="assistant",
+            content=ai_response["answer"],
+            sources={
+                "sources": ai_response["sources"],
+                "answer_type": ai_response["answer_type"],
+                "external_sources": ai_response["external_sources"],
+                "retrieval_info": ai_response["retrieval_info"]
+            }
+        )
+        db.add(assistant_msg)
+        db.commit()
+
+    return {
+        "answer": ai_response["answer"],
+        "sources": ai_response["sources"],
+        "answer_type": ai_response["answer_type"],
+        "external_sources": ai_response["external_sources"],
+        "retrieval_info": ai_response["retrieval_info"]
+    }
+
+
+# ==========================================
+# STATIC FRONTEND SERVING
+# ==========================================
+
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/")
+    def serve_frontend():
+        return FileResponse(STATIC_DIR / "index.html")

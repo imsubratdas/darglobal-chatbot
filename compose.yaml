@@ -1,0 +1,11 @@
+services:
+  darglobal-bot:
+    build: .
+    container_name: darglobal-bot
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

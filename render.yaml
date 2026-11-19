@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: darglobal-bot
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: ENABLE_EXTERNAL_SEARCH
+        value: "true"
+      - key: FASTEMBED_LOCAL_ONLY
+        value: "false"
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: darglobal-bot-data
+      mountPath: /var/data
+      sizeGB: 1

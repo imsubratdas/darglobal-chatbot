@@ -1,142 +1,45 @@
 <!doctype html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DarGlobal and Wasalt Assistant</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background: #f4f6f8;
-        margin: 0;
-      }
-      #app {
-        max-width: 720px;
-        margin: 0 auto;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-      }
-      h1 {
-        font-size: 18px;
-        padding: 14px 16px;
-        margin: 0;
-        background: #1f3a5f;
-        color: #fff;
-      }
-      #log {
-        flex: 1;
-        overflow-y: auto;
-        padding: 16px;
-      }
-      .msg {
-        margin: 8px 0;
-        padding: 10px 14px;
-        border-radius: 10px;
-        max-width: 85%;
-        white-space: pre-wrap;
-      }
-      .user {
-        background: #1f3a5f;
-        color: #fff;
-        margin-left: auto;
-      }
-      .bot {
-        background: #fff;
-        border: 1px solid #dde2e7;
-      }
-      .src {
-        font-size: 12px;
-        color: #667;
-        margin-top: 6px;
-        word-break: break-all;
-      }
-      #bar {
-        display: flex;
-        gap: 8px;
-        padding: 12px;
-        background: #fff;
-        border-top: 1px solid #dde2e7;
-      }
-      #q {
-        flex: 1;
-        padding: 10px;
-        font-size: 15px;
-      }
-      button {
-        padding: 10px 18px;
-        font-size: 15px;
-        background: #1f3a5f;
-        color: #fff;
-        border: 0;
-        border-radius: 6px;
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="app">
-      <h1>DarGlobal and Wasalt Assistant</h1>
-      <div id="log"></div>
-      <div id="bar">
-        <input
-          id="q"
-          placeholder="Ask about DarGlobal or Wasalt..."
-          autofocus
-        />
-        <button id="send">Send</button>
-      </div>
-    </div>
-    <script>
-      const log = document.getElementById("log");
-      const q = document.getElementById("q");
-      let history = [];
-      function add(text, cls, sources) {
-        const d = document.createElement("div");
-        d.className = "msg " + cls;
-        d.textContent = text;
-        if (sources && sources.length) {
-          const s = document.createElement("div");
-          s.className = "src";
-          s.textContent = "Sources: " + sources.join(", ");
-          d.appendChild(s);
-        }
-        log.appendChild(d);
-        log.scrollTop = log.scrollHeight;
-        return d;
-      }
-      async function send() {
-        const text = q.value.trim();
-        if (!text) return;
-        q.value = "";
-        add(text, "user");
-        const wait = add("Thinking...", "bot");
-        try {
-          const res = await fetch("/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: text, history: history }),
-          });
-          const data = await res.json();
-          wait.remove();
-          if (!res.ok) {
-            add("Error: " + (data.detail || res.status), "bot");
-            return;
-          }
-          add(data.answer, "bot", data.sources);
-          history.push(
-            { role: "user", content: text },
-            { role: "assistant", content: data.answer },
-          );
-        } catch (e) {
-          wait.remove();
-          add("Network error. Please try again.", "bot");
-        }
-      }
-      document.getElementById("send").onclick = send;
-      q.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") send();
-      });
-    </script>
-  </body>
-</html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#161b18">
+<title>darglobal-bot | Real estate intelligence</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="apple-touch-icon" href="/static/favicon.png">
+<style>
+:root{--ink:#18201c;--muted:#6e766f;--paper:#f7f6f2;--card:#fff;--line:#e4e3dc;--forest:#263a30;--gold:#bd9a63;--serif:Georgia,'Times New Roman',serif}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 Inter,'Segoe UI',Arial,sans-serif}button,input,textarea{font:inherit}button,a{cursor:pointer}a{color:inherit}.hidden{display:none!important}.nav{height:80px;display:flex;align-items:center;justify-content:space-between;padding:0 6vw;background:var(--paper);border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;text-decoration:none;font-size:19px;letter-spacing:.07em;font-weight:600}.brandmark{width:36px;height:36px;border:1px solid var(--gold);display:grid;place-items:center;color:var(--gold);font:22px var(--serif)}.navlinks{display:flex;align-items:center;gap:30px}.navlinks a{text-decoration:none;font-size:13px;letter-spacing:.06em}.navlinks a:hover{color:var(--gold)}.btn{border:1px solid var(--forest);background:var(--forest);color:white;padding:12px 22px;letter-spacing:.04em;font-size:12px;text-transform:uppercase}.btn:hover{background:#354a3e}.btn.secondary{background:transparent;color:var(--forest)}.hero{min-height:580px;display:grid;grid-template-columns:1fr 1fr;background:#202a24;color:#fff;overflow:hidden}.hero-copy{padding:90px 8vw 70px 10vw;align-self:center}.eyebrow{text-transform:uppercase;letter-spacing:.22em;color:var(--gold);font-size:11px}.hero h1{font:clamp(44px,5vw,70px)/1.05 var(--serif);font-weight:400;letter-spacing:-.035em;margin:22px 0}.hero p{color:#d0d2cc;max-width:500px;font-size:16px}.hero-actions{display:flex;gap:12px;margin-top:30px}.hero .btn{background:var(--gold);border-color:var(--gold);color:#1d241f}.hero .btn.secondary{background:transparent;color:white;border-color:#7d817a}.hero-art{position:relative;min-height:480px;background:linear-gradient(90deg,#202a24 0%,#202a2450 25%,transparent 80%),linear-gradient(0deg,#202a2480,transparent 60%),url('https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?auto=format&fit=crop&w=1800&q=85') center/cover}.hero-art:after{content:'GLOBAL CAPITAL · ENDURING PLACES';position:absolute;bottom:28px;right:7%;font-size:10px;letter-spacing:.22em;color:#fff}.section{padding:86px 9vw}.section h2{font:42px/1.1 var(--serif);font-weight:400;margin:12px 0 18px}.intro{max-width:620px;color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:38px}.card{padding:28px;background:var(--card);border:1px solid var(--line)}.card .num{font:32px var(--serif);color:var(--gold)}.card h3{font:23px var(--serif);font-weight:400;margin:12px 0}.card p{color:var(--muted);font-size:14px}.steps{background:#eae8e1}.footer{padding:32px 9vw;background:#202a24;color:#c9cec8;font-size:12px;display:flex;justify-content:space-between;gap:20px}.disclaimer{font-size:11px;color:var(--muted)}
+#authView{min-height:100vh;display:grid;grid-template-columns:1fr 1fr}.auth-art{background:linear-gradient(0deg,#17221dde,#17221d40),url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1300&q=85') center/cover;color:white;display:flex;align-items:end;padding:8vw}.auth-art h2{font:48px var(--serif);font-weight:400}.auth-panel{display:flex;align-items:center;justify-content:center;padding:32px}.auth-box{width:min(420px,100%)}.auth-box h1{font:40px var(--serif);font-weight:400}.auth-box label{display:block;font-size:12px;margin:18px 0 6px}.auth-box input{width:100%;padding:13px;border:1px solid var(--line);background:white}.auth-box .btn{width:100%;margin-top:24px}.auth-error{color:#a04436;font-size:13px;min-height:20px}.auth-switch{font-size:13px;margin-top:18px}.auth-switch a{color:#79613c}
+#chatView{height:100dvh;display:flex;overflow:hidden;background:#f8f7f3}.sidebar{width:280px;background:#202a24;color:#eff0eb;display:flex;flex-direction:column;padding:18px 14px;flex-shrink:0}.sidebrand{padding:8px 6px 22px}.sidebrand .brand{font-size:15px}.sidebrand .brandmark{width:32px;height:32px}.newchat{width:100%;padding:11px;background:#33463a;border:1px solid #4a5b4e;color:#fff;text-align:left}.side-label{font-size:10px;color:#9fa79f;text-transform:uppercase;letter-spacing:.16em;padding:22px 7px 8px}.chat-list{overflow:auto;flex:1}.chat-row{display:flex;align-items:center;gap:4px;padding:8px 7px;border-radius:3px;color:#d7dcd6;font-size:12px}.chat-row.active,.chat-row:hover{background:#34443a}.chat-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;cursor:pointer}.chat-actions{display:flex;gap:1px}.chat-actions button{background:transparent;color:#bbc2b9;border:0;padding:3px;font-size:12px}.chat-actions button:hover{color:#fff}.profile{border-top:1px solid #425047;padding:15px 5px 4px;display:flex;justify-content:space-between;align-items:center;font-size:12px}.profile button{background:transparent;border:0;color:#d6ddd5;font-size:12px}.main{min-width:0;display:flex;flex:1;flex-direction:column}.topbar{height:62px;padding:0 25px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;background:#fbfaf7}.topname{font:17px var(--serif)}.menu{display:none;border:0;background:transparent;font-size:21px}.chat-log{flex:1;overflow:auto;padding:38px 20px 25px}.welcome{max-width:800px;margin:9vh auto 0}.welcome .eyebrow{color:#8a714d}.welcome h1{font:clamp(36px,5vw,54px)/1.08 var(--serif);font-weight:400;margin:14px 0}.welcome p{color:var(--muted);max-width:560px}.prompts{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:34px}.prompt{border:1px solid var(--line);background:#fff;padding:17px;text-align:left;color:var(--ink)}.prompt:hover{border-color:var(--gold)}.prompt b{font:18px var(--serif);font-weight:400;display:block;margin-bottom:5px}.prompt span{font-size:12px;color:var(--muted)}.messages{max-width:850px;margin:0 auto}.message{display:flex;gap:14px;margin:24px 0;animation:rise .2s ease}.avatar{width:30px;height:30px;background:#e7e0d4;color:#6e593a;display:grid;place-items:center;flex-shrink:0;font:17px var(--serif)}.message.user .avatar{background:#dce3dc;color:#425647}.message-body{min-width:0;max-width:760px;flex:1}.message-name{font-size:11px;color:var(--muted);margin:1px 0 6px}.bubble{font-size:14px;line-height:1.72;overflow-wrap:anywhere}.bubble p{margin:0 0 10px}.bubble ul{margin:6px 0;padding-left:20px}.bubble a{color:#856b45}.sourcebox{margin:10px 0 0 44px;padding:12px 14px;background:#eeede7;border-left:2px solid var(--gold);font-size:11px}.source-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6b604c;margin-bottom:5px}.sourcebox a{display:block;color:#5c684f;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}.message-tools{display:flex;gap:8px;margin-top:7px}.message-tools button{border:0;background:transparent;color:#7c827b;font-size:11px;padding:3px}.composer-wrap{padding:12px 22px 16px;background:linear-gradient(transparent,#f8f7f3 20%)}.composer{max-width:850px;margin:0 auto;display:flex;align-items:end;border:1px solid #d7d6ce;background:#fff;padding:8px 10px;box-shadow:0 4px 18px #24281d0c}.composer textarea{resize:none;border:0;outline:0;background:transparent;flex:1;padding:9px;max-height:150px;min-height:42px}.send{border:0;background:var(--forest);color:white;width:38px;height:38px;font-size:20px}.send:disabled{opacity:.45}.fineprint{max-width:850px;margin:7px auto 0;color:#969a93;text-align:center;font-size:10px}.typing{color:#8f938c;font-style:italic;font-size:13px}.toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);background:#25362b;color:white;padding:10px 18px;font-size:12px;z-index:8}
+@keyframes rise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}@media(max-width:850px){.nav{padding:0 5vw}.navlinks{gap:15px}.hero{grid-template-columns:1fr}.hero-copy{padding:65px 8vw 45px}.hero-art{min-height:330px;background-position:center 56%}.cards{grid-template-columns:1fr}.section{padding:64px 7vw}.menu{display:block}.sidebar{position:fixed;z-index:4;inset:0 auto 0 0;transform:translateX(-101%);transition:transform .22s;box-shadow:10px 0 40px #0002}.sidebar.open{transform:translateX(0)}.chat-log{padding:25px 16px}.prompts{grid-template-columns:1fr}.welcome{margin:5vh auto}.topbar{padding:0 16px}}@media(max-width:560px){.nav{height:66px}.navlinks a:not(.btn){display:none}.navlinks{gap:10px}.navlinks .btn{padding:10px 12px}.hero h1{font-size:47px}.hero-copy{padding:56px 7vw 35px}.hero-art{min-height:260px}.footer{display:block}.footer span{display:block;margin:6px 0}#authView{grid-template-columns:1fr}.auth-art{display:none}.auth-panel{align-items:flex-start;padding:50px 24px}.bubble{font-size:13px}.sourcebox{margin-left:0}.chat-log{padding:20px 13px}.composer-wrap{padding:8px 10px 12px}}
+</style></head>
+<body>
+<section id="landingView">
+<nav class="nav"><a class="brand" href="#home"><span class="brandmark">D</span><span>darglobal-bot</span></a><div class="navlinks"><a href="#home">Home</a><a href="#about">About</a><a href="#features">Features</a><a href="#login" id="loginNav">Login</a><button class="btn" id="startNav">Get started</button></div></nav>
+<header class="hero" id="home"><div class="hero-copy"><div class="eyebrow">Independent real estate intelligence</div><h1>Explore real estate intelligence with AI</h1><p>Explore DarGlobal and Wasalt developments, places and property information through one thoughtful AI assistant.</p><div class="hero-actions"><button class="btn" id="heroStart">Start exploring&nbsp; ↗</button><a class="btn secondary" href="#features">Discover more</a></div></div><div class="hero-art" role="img" aria-label="Refined contemporary residence"></div></header>
+<section class="section" id="about"><div class="eyebrow">A clearer way to explore</div><h2>Property knowledge, brought into focus.</h2><p class="intro">Ask natural questions about projects, locations, property offerings and real estate topics. darglobal-bot searches its collected DarGlobal and Wasalt information, then shows where its answers came from.</p><div class="cards" id="features"><article class="card"><div class="num">01</div><h3>Explore the portfolio</h3><p>Find details across collected DarGlobal developments and Wasalt marketplace information.</p></article><article class="card"><div class="num">02</div><h3>Ask naturally</h3><p>Move from broad discovery to precise follow-up questions in the same conversation.</p></article><article class="card"><div class="num">03</div><h3>See the sources</h3><p>Review linked references and clear labels when an answer uses external research.</p></article></div></section>
+<section class="section steps"><div class="eyebrow">How it works</div><h2>From question to useful context.</h2><p class="intro">The assistant searches its collected knowledge first and reaches for external sources when more information is needed and search is configured. Answers make that distinction clear.</p><button class="btn" id="bottomStart">Begin a conversation&nbsp; ↗</button></section>
+<footer class="footer"><span>© 2026 darglobal-bot</span><span>Independent AI informational assistant. Not an official DarGlobal or Wasalt product.</span></footer>
+</section>
+<section id="authView" class="hidden"><div class="auth-art"><div><div class="eyebrow">A considered view of real estate</div><h2>Knowledge for a world without borders.</h2></div></div><div class="auth-panel"><div class="auth-box"><a class="brand" href="#home"><span class="brandmark">D</span><span>darglobal-bot</span></a><h1 id="authHeading">Welcome back</h1><p class="intro" id="authCopy">Sign in to continue your conversations.</p><form id="authForm"><div id="nameField" class="hidden"><label for="authName">Name</label><input id="authName" autocomplete="name" minlength="2" maxlength="100"></div><label for="authEmail">Email</label><input id="authEmail" type="email" autocomplete="email" required><label for="authPassword">Password</label><div style="display:flex;gap:8px"><input id="authPassword" type="password" autocomplete="current-password" minlength="8" required><button type="button" class="btn secondary" id="togglePassword" style="padding:0 12px;text-transform:none">Show</button></div><div id="confirmField" class="hidden"><label for="authConfirm">Confirm password</label><input id="authConfirm" type="password" autocomplete="new-password"></div><div class="auth-error" id="authError"></div><button class="btn" type="submit" id="authSubmit">Sign in</button></form><div class="auth-switch"><span id="switchPrompt">New here?</span> <a href="#login" id="switchAuth">Create an account</a> · <a href="#home" id="backHome">Home</a></div></div></div></section>
+<section id="chatView" class="hidden"><aside class="sidebar" id="sidebar"><div class="sidebrand"><a class="brand" href="#home"><span class="brandmark">D</span><span>darglobal-bot</span></a></div><button class="newchat" id="newChat">＋ &nbsp; New chat</button><div class="side-label">Pinned chats</div><div id="pinnedChats" class="chat-list"></div><div class="side-label">Recent chats</div><div id="recentChats" class="chat-list"></div><div class="profile"><span id="profileName">Account</span><button id="logout">Log out ↗</button></div></aside><main class="main"><header class="topbar"><div style="display:flex;align-items:center;gap:12px"><button class="menu" id="menuBtn" aria-label="Open conversations">☰</button><span class="topname">Real estate intelligence</span></div><span class="eyebrow" style="color:#8a714d">DarGlobal · Wasalt</span></header><div class="chat-log" id="chatLog"><div class="welcome" id="welcome"><div class="eyebrow">What would you like to discover?</div><h1>Good questions open new doors.</h1><p>Explore developments, locations and real estate knowledge. Ask a question to begin.</p><div class="prompts"><button class="prompt" data-prompt="Tell me about DarGlobal and its developments."><b>Explore DarGlobal</b><span>Company, projects and destinations</span></button><button class="prompt" data-prompt="What can you tell me about Wasalt?"><b>Explore Wasalt</b><span>Platform and collected listings</span></button><button class="prompt" data-prompt="Which developments are located in Dubai?"><b>Discover a location</b><span>Find projects by city or region</span></button><button class="prompt" data-prompt="Compare DarGlobal and Wasalt."><b>Compare and understand</b><span>Explore the differences</span></button></div></div><div class="messages" id="messages"></div></div><div class="composer-wrap"><div class="composer"><textarea id="question" rows="1" placeholder="Ask about DarGlobal, Wasalt or real estate…"></textarea><button class="send" id="send" aria-label="Send message" disabled>↑</button></div><div class="fineprint">Independent AI informational assistant · Verify important details with the linked original sources.</div></div></main></section><div id="toast" class="toast hidden"></div>
+<script>
+const $=id=>document.getElementById(id), landing=$('landingView'),authView=$('authView'),chatView=$('chatView'),question=$('question');let authMode='login',chats=[],activeChat=null,busy=false,lastQuestion='';
+async function api(path,opts={}){const res=await fetch(path,{credentials:'same-origin',...opts,headers:{'Content-Type':'application/json',...(opts.headers||{})}});let data={};try{data=await res.json()}catch{}if(!res.ok)throw new Error(data.detail||data.message||`Request failed (${res.status})`);return data}
+function toast(t){$('toast').textContent=t;$('toast').classList.remove('hidden');setTimeout(()=>$('toast').classList.add('hidden'),2600)}
+function showLanding(){landing.classList.remove('hidden');authView.classList.add('hidden');chatView.classList.add('hidden');location.hash='home'}
+function showAuth(mode='login'){authMode=mode;landing.classList.add('hidden');chatView.classList.add('hidden');authView.classList.remove('hidden');$('authHeading').textContent=mode==='login'?'Welcome back':'Create your account';$('authCopy').textContent=mode==='login'?'Sign in to continue your conversations.':'Create an account to save your conversations.';$('nameField').classList.toggle('hidden',mode==='login');$('confirmField').classList.toggle('hidden',mode==='login');$('authName').required=mode==='register';$('authConfirm').required=mode==='register';$('authSubmit').textContent=mode==='login'?'Sign in':'Create account';$('switchPrompt').textContent=mode==='login'?'New here?':'Already have an account?';$('switchAuth').textContent=mode==='login'?'Create an account':'Sign in';$('authError').textContent='';location.hash='login'}
+function showChat(){landing.classList.add('hidden');authView.classList.add('hidden');chatView.classList.remove('hidden');$('profileName').textContent=window.currentUser?.name||'Your account';loadChats()}
+document.querySelectorAll('.brand').forEach(link=>link.addEventListener('click',e=>{if(landing.classList.contains('hidden')){e.preventDefault();showLanding()}}));
+$('startNav').onclick=$('heroStart').onclick=$('bottomStart').onclick=()=>showAuth('register');$('loginNav').onclick=e=>{e.preventDefault();showAuth('login')};$('backHome').onclick=e=>{e.preventDefault();showLanding()};$('switchAuth').onclick=e=>{e.preventDefault();showAuth(authMode==='login'?'register':'login')};$('togglePassword').onclick=()=>{const i=$('authPassword');i.type=i.type==='password'?'text':'password';$('togglePassword').textContent=i.type==='password'?'Show':'Hide'};
+$('authForm').onsubmit=async e=>{e.preventDefault();$('authError').textContent='';const email=$('authEmail').value.trim().toLowerCase(),password=$('authPassword').value; if(authMode==='register'&&password!==$('authConfirm').value){$('authError').textContent='Passwords do not match.';return}const btn=$('authSubmit');btn.disabled=true;btn.textContent='Please wait…';try{if(authMode==='register'){await api('/api/register',{method:'POST',body:JSON.stringify({name:$('authName').value.trim(),email,password})});authMode='login'}window.currentUser=(await api('/api/login',{method:'POST',body:JSON.stringify({email,password})})).user;showChat()}catch(err){$('authError').textContent=err.message}finally{btn.disabled=false;btn.textContent=authMode==='login'?'Sign in':'Create account'}};
+function safeURL(url){try{const u=new URL(url);return ['http:','https:'].includes(u.protocol)?u.href:null}catch{return null}}
+function format(text){let s=String(text??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,(_,t,u)=>`<a href="${u}" target="_blank" rel="noopener noreferrer">${t}</a>`);s=s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>');return s.split(/\n\n+/).map(block=>{const lines=block.split('\n');if(lines.every(line=>/^\s*[-*]\s+/.test(line)))return `<ul>${lines.map(line=>`<li>${line.replace(/^\s*[-*]\s+/,'')}</li>`).join('')}</ul>`;return `<p>${block.replace(/\n/g,'<br>')}</p>`}).join('')}
+function appendMessage(role,content,meta={}){const box=document.createElement('article');box.className=`message ${role}`;const avatar=document.createElement('div');avatar.className='avatar';avatar.textContent=role==='user'?'Y':'D';const body=document.createElement('div');body.className='message-body';const name=document.createElement('div');name.className='message-name';name.textContent=role==='user'?'You':'darglobal-bot';const bubble=document.createElement('div');bubble.className='bubble';bubble.innerHTML=format(content);body.append(name,bubble);box.append(avatar,body);$('messages').appendChild(box);if(role==='assistant'){const sb=document.createElement('div');sb.className='sourcebox';const label=document.createElement('div');label.className='source-label';label.textContent=meta.answer_type==='external'?'External research — this information was not available in our collected dataset and was retrieved from external sources.':meta.answer_type==='mixed'?'Combined information — based on our knowledge base and external sources.':meta.answer_type==='general'?'General response — no collected or external sources used.':'Based on the darglobal-bot knowledge base';sb.appendChild(label);for(const src of (meta.sources||[])){const url=typeof src==='string'?src:src.url;if(!safeURL(url))continue;const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=typeof src==='object'&&src.title?src.title:url;sb.appendChild(a)}body.appendChild(sb);const tools=document.createElement('div');tools.className='message-tools';const copy=document.createElement('button');copy.textContent='Copy response';copy.onclick=async()=>{try{await navigator.clipboard.writeText(content);toast('Response copied')}catch{toast('Copy is unavailable in this browser')}};tools.appendChild(copy);if(meta.failed){const retry=document.createElement('button');retry.textContent='Retry';retry.onclick=()=>{const prior=box.previousElementSibling;if(prior?.classList.contains('user'))prior.remove();box.remove();send(meta.retryText||lastQuestion)};tools.appendChild(retry)}body.appendChild(tools)}$('chatLog').scrollTop=$('chatLog').scrollHeight;return box}
+function renderConversation(msgs=[]){$('messages').innerHTML='';$('welcome').classList.toggle('hidden',msgs.length>0);for(const m of msgs)appendMessage(m.role==='user'?'user':'assistant',m.content,{sources:m.sources,answer_type:m.answer_type});$('chatLog').scrollTop=$('chatLog').scrollHeight}
+function renderChats(){for(const [id,arr] of [['pinnedChats',chats.filter(c=>c.is_pinned)],['recentChats',chats.filter(c=>!c.is_pinned)]]){const el=$(id);el.innerHTML='';arr.forEach(c=>{const row=document.createElement('div');row.className='chat-row'+(c.id===activeChat?' active':'');const title=document.createElement('div');title.className='chat-title';title.textContent=c.title;title.onclick=()=>openChat(c.id);const actions=document.createElement('span');actions.className='chat-actions';[['⌖',async()=>{await api(`/api/chats/${c.id}`,{method:'PATCH',body:JSON.stringify({is_pinned:!c.is_pinned})});await loadChats()}],['✎',async()=>{const t=prompt('Rename conversation',c.title);if(t?.trim()){await api(`/api/chats/${c.id}`,{method:'PATCH',body:JSON.stringify({title:t.trim()})});await loadChats()}}],['×',async()=>{if(confirm('Delete this conversation?')){await api(`/api/chats/${c.id}`,{method:'DELETE'});if(activeChat===c.id){activeChat=null;renderConversation([])}await loadChats()}}]].forEach(([label,fn])=>{const b=document.createElement('button');b.textContent=label;b.title=label==='⌖'?(c.is_pinned?'Unpin':'Pin'):label==='✎'?'Rename':'Delete';b.onclick=e=>{e.stopPropagation();Promise.resolve(fn()).catch(x=>toast(x.message))};actions.appendChild(b)});row.append(title,actions);el.appendChild(row)})}}
+async function loadChats(){try{chats=await api('/api/chats');renderChats()}catch(e){if(e.message.includes('Authentication'))showAuth('login');else toast(e.message)}}
+async function openChat(id){try{const c=await api(`/api/chats/${id}`);activeChat=id;renderChats();renderConversation(c.messages||[]);$('sidebar').classList.remove('open')}catch(e){toast(e.message)}}
+$('newChat').onclick=async()=>{try{const c=await api('/api/chats',{method:'POST',body:JSON.stringify({title:'New chat'})});activeChat=c.id;await loadChats();renderConversation([]);question.focus();$('sidebar').classList.remove('open')}catch(e){toast(e.message)}};$('menuBtn').onclick=()=>$('sidebar').classList.toggle('open');$('logout').onclick=async()=>{await api('/api/logout',{method:'POST'});window.currentUser=null;showLanding()};
+async function send(text=question.value.trim()){if(!text||busy)return;if(!activeChat){try{const c=await api('/api/chats',{method:'POST',body:JSON.stringify({title:'New chat'})});activeChat=c.id;await loadChats()}catch(e){toast(e.message);return}}busy=true;lastQuestion=text;question.value='';question.style.height='auto';$('send').disabled=true;$('welcome').classList.add('hidden');appendMessage('user',text);const pending=appendMessage('assistant','Thinking…');pending.querySelector('.bubble').classList.add('typing');try{const data=await api(`/api/chats/${activeChat}/messages`,{method:'POST',body:JSON.stringify({message:text})});if(typeof data.answer!=='string'||!data.answer.trim())throw new Error('The answer service returned an empty response. Please try again.');pending.remove();appendMessage('assistant',data.answer,data);await loadChats()}catch(e){pending.remove();appendMessage('assistant',e.message,{failed:true,retryText:text});}finally{busy=false;$('send').disabled=!question.value.trim();question.focus()}}
+$('send').onclick=()=>send();question.oninput=()=>{question.style.height='auto';question.style.height=Math.min(question.scrollHeight,150)+'px';$('send').disabled=busy||!question.value.trim()};question.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};document.querySelectorAll('[data-prompt]').forEach(b=>b.onclick=()=>send(b.dataset.prompt));
+(async()=>{try{window.currentUser=await api('/api/me');showChat()}catch{showLanding()}})();
+</script></body></html>
